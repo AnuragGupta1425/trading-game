@@ -1,249 +1,356 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Axxela Multiplayer Trading Game</title>
-  <script src="/socket.io/socket.io.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Axxela Multiplayer Trading Floor</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/socket.io/socket.io.js"></script>
   <style>
-    body { background-color: #0b0312; color: #ffffff; font-family: sans-serif; }
+    body { background-color: #0b0f19; }
+    .glass {
+      background: rgba(17, 24, 39, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
   </style>
 </head>
-<body class="flex flex-col h-screen">
+<body class="text-slate-100 font-sans antialiased min-h-screen flex flex-col">
 
-  <!-- Lobby Overlay -->
-  <div id="lobby" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50">
-    <div class="bg-[#260b24] p-8 rounded-xl border border-pink-900 w-80 text-center shadow-2xl">
-      <h1 class="text-2xl font-bold text-yellow-500 mb-4">Axxela Trading Platform</h1>
-      <input id="inpName" type="text" placeholder="Enter Your Name" class="w-full p-2 mb-3 bg-[#140413] border border-gray-700 rounded text-white text-center outline-none">
-      <input id="inpRoom" type="text" placeholder="Room Code (e.g. ROOM1)" class="w-full p-2 mb-4 bg-[#140413] border border-gray-700 rounded text-white text-center outline-none">
-      <button onclick="joinGame()" class="w-full py-2 bg-pink-800 hover:bg-pink-700 font-bold rounded">Join / Create Room</button>
+  <!-- TOP HEADER -->
+  <header class="glass sticky top-0 z-50 px-6 py-3 border-b border-slate-800 flex flex-wrap justify-between items-center gap-4">
+    <div class="flex items-center space-x-3">
+      <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+      <h1 class="text-xl font-bold tracking-wider text-emerald-400">AXXELA TRADING ROOM</h1>
+      <span id="roomBadge" class="bg-slate-800 text-slate-300 text-xs px-2.5 py-1 rounded border border-slate-700 font-mono hidden">--</span>
     </div>
-  </div>
 
-  <!-- Header Bar -->
-  <header class="flex justify-between items-center px-6 py-3 bg-[#140413] border-b border-pink-950">
-    <div id="lblRound" class="text-xl font-bold">Round 1</div>
-    <div id="lblSeat" class="text-sm font-semibold text-yellow-500">Seat: -</div>
-    <div id="lblTimer" class="text-xl font-bold text-emerald-400">01:30</div>
+    <!-- Live Game Status Header -->
+    <div class="flex items-center space-x-6 font-mono text-sm">
+      <div class="bg-slate-900/80 px-4 py-1.5 rounded-lg border border-slate-800 flex items-center gap-2">
+        <span class="text-slate-400 uppercase text-xs tracking-wider">Round:</span>
+        <span id="headerRound" class="text-emerald-400 font-bold text-base">1 / 6</span>
+      </div>
+      <div class="bg-slate-900/80 px-4 py-1.5 rounded-lg border border-slate-800 flex items-center gap-2">
+        <span class="text-slate-400 uppercase text-xs tracking-wider">Timer:</span>
+        <span id="headerTimer" class="text-amber-400 font-bold text-base">90s</span>
+      </div>
+    </div>
   </header>
 
-  <!-- Main Game Dashboard -->
-  <div class="flex flex-1 overflow-hidden">
-    <!-- Left: Interactive Table Canvas -->
-    <div class="flex-1 flex flex-col items-center justify-center p-4">
-      <canvas id="tableCanvas" width="700" height="420" class="max-w-full max-h-full"></canvas>
-    </div>
+  <!-- MAIN JOIN overlay / CONTENT -->
+  <main class="flex-1 p-4 lg:p-6 max-w-[1600px] mx-auto w-full flex flex-col gap-6">
 
-    <!-- Right: Order Desk & Execution Logs -->
-    <div class="w-80 bg-[#260b24] border-l border-pink-950 p-4 flex flex-col gap-4 overflow-y-auto">
-      
-      <!-- User Position Stats -->
-      <div class="flex gap-2 text-center text-xs font-bold">
-        <div id="boxPnl" class="flex-1 bg-[#140413] p-2 rounded border border-gray-800">P/L: ₹0</div>
-        <div id="boxPos" class="flex-1 bg-[#140413] p-2 rounded border border-gray-800">Pos: 0</div>
-      </div>
-
-      <!-- Post Market Offer Form -->
-      <div class="bg-[#140413] p-3 rounded border border-pink-900/50">
-        <div class="text-xs text-gray-400 mb-2 font-bold text-center">POST YOUR QUOTE (BID / ASK)</div>
-        <div class="flex gap-2 mb-2">
-          <input id="inpBid" type="number" placeholder="Bid Price" class="w-1/2 p-1 bg-black text-green-400 text-center text-sm border border-green-800 rounded">
-          <input id="inpAsk" type="number" placeholder="Ask Price" class="w-1/2 p-1 bg-black text-red-400 text-center text-sm border border-red-800 rounded">
+    <!-- JOIN MODAL OVERLAY -->
+    <div id="joinModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="glass p-8 rounded-2xl max-w-md w-full border border-slate-700/50 shadow-2xl space-y-6">
+        <div class="text-center space-y-2">
+          <h2 class="text-2xl font-bold text-white">Join Trading Desk</h2>
+          <p class="text-xs text-slate-400">Enter room code and handle to join live seat (A-F)</p>
         </div>
-        <button onclick="sendQuote()" class="w-full py-1.5 bg-green-700 hover:bg-green-600 font-bold text-xs rounded">Update Market Quote</button>
-      </div>
-
-      <!-- Trades Log -->
-      <div>
-        <div class="text-xs font-bold text-gray-400 mb-1">REAL-TIME TRADES</div>
-        <div id="tradeLog" class="h-28 bg-[#140413] p-2 rounded text-xs font-mono border border-gray-800 overflow-y-auto flex flex-col gap-1"></div>
-      </div>
-
-      <!-- Live Leaderboard -->
-      <div>
-        <div class="text-xs font-bold text-yellow-500 mb-1">LIVE LEADERBOARD</div>
-        <div id="leaderboard" class="bg-[#140413] p-2 rounded text-xs font-mono border border-gray-800 flex flex-col gap-1"></div>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs uppercase font-bold text-slate-400 mb-1">Room Code</label>
+            <input id="roomInput" type="text" value="ROOM1" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-emerald-500 font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs uppercase font-bold text-slate-400 mb-1">Player Name</label>
+            <input id="nameInput" type="text" placeholder="Trader Name" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+          <button id="joinBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition duration-200 shadow-lg shadow-emerald-900/30">
+            ENTER TRADING FLOOR
+          </button>
+        </div>
       </div>
     </div>
-  </div>
+
+    <!-- DASHBOARD LAYOUT -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+
+      <!-- LEFT: Live Seat Table & Order Creation (5 Cols) -->
+      <div class="lg:col-span-5 flex flex-col gap-6">
+
+        <!-- Revealed Digits Dashboard -->
+        <div class="glass p-5 rounded-2xl border border-slate-800 space-y-3">
+          <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Revealed Digits</h3>
+          <div id="digitContainer" class="flex items-center gap-2 overflow-x-auto pb-1">
+            <div class="text-slate-500 text-sm italic">Waiting for digits...</div>
+          </div>
+        </div>
+
+        <!-- Order Placement Console -->
+        <div class="glass p-5 rounded-2xl border border-slate-800 space-y-4">
+          <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Post Order to Market</h3>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Price (₹)</label>
+              <input id="orderPrice" type="number" step="0.5" placeholder="100" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"/>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Quantity</label>
+              <input id="orderQty" type="number" value="1" min="1" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"/>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <button id="btnBuy" class="bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 hover:border-emerald-500 text-emerald-400 hover:text-white font-bold py-2.5 rounded-xl transition duration-150 flex items-center justify-center gap-2">
+              <span>POST BUY</span>
+            </button>
+            <button id="btnSell" class="bg-rose-600/20 hover:bg-rose-600 border border-rose-500/50 hover:border-rose-500 text-rose-400 hover:text-white font-bold py-2.5 rounded-xl transition duration-150 flex items-center justify-center gap-2">
+              <span>POST SELL</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Active Room Players Table (A-F Seats) -->
+        <div class="glass p-5 rounded-2xl border border-slate-800 flex-1 space-y-3">
+          <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Desk Seats (A-F)</h3>
+          <div id="seatsContainer" class="grid grid-cols-2 gap-3">
+            <!-- Dynamically Rendered -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT: Casino Style Shared Order Book & Trade Feed (7 Cols) -->
+      <div class="lg:col-span-7 flex flex-col gap-6">
+
+        <!-- Shared Live Order Book Table -->
+        <div class="glass p-5 rounded-2xl border border-slate-800 flex-1 flex flex-col">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Live Order Book (Click Offer to Trade)</h3>
+            <span class="text-xs text-slate-500 font-mono">Real-time Multi-User Sync</span>
+          </div>
+
+          <div class="overflow-x-auto flex-1 custom-scrollbar">
+            <table class="w-full text-left font-mono text-sm border-collapse">
+              <thead>
+                <tr class="border-b border-slate-800 text-xs text-slate-500 uppercase">
+                  <th class="pb-2">Trader</th>
+                  <th class="pb-2">Type</th>
+                  <th class="pb-2">Price</th>
+                  <th class="pb-2">Qty</th>
+                  <th class="pb-2 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="orderBookTable" class="divide-y divide-slate-800/50">
+                <tr>
+                  <td colspan="5" class="py-8 text-center text-slate-500">No active offers. Post a Buy/Sell order to start.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Trade History Log -->
+        <div class="glass p-5 rounded-2xl border border-slate-800 h-48 flex flex-col">
+          <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Live Trade Ticker</h3>
+          <div id="tradeLog" class="flex-1 overflow-y-auto custom-scrollbar space-y-2 font-mono text-xs">
+            <div class="text-slate-500 italic">No trades executed yet...</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
 
   <script>
     const socket = io();
-    let mySeat = null;
-    let gameState = { seats: {}, offers: {}, trades: [], pnls: {}, positions: {}, revealedDigits: [], currentRound: 1 };
-    const canvas = document.getElementById('tableCanvas');
-    const ctx = canvas.getContext('2d');
 
-    function joinGame() {
-      const playerName = document.getElementById('inpName').value.trim();
-      const roomId = document.getElementById('inpRoom').value.trim();
-      if (!playerName || !roomId) return alert('Enter name and room code!');
-      
-      socket.emit('joinRoom', { roomId, playerName });
+    let currentRoom = null;
+    let myPlayerId = null;
+
+    // DOM Elements
+    const joinModal = document.getElementById('joinModal');
+    const joinBtn = document.getElementById('joinBtn');
+    const roomInput = document.getElementById('roomInput');
+    const nameInput = document.getElementById('nameInput');
+    const roomBadge = document.getElementById('roomBadge');
+
+    const headerRound = document.getElementById('headerRound');
+    const headerTimer = document.getElementById('headerTimer');
+    const digitContainer = document.getElementById('digitContainer');
+    const seatsContainer = document.getElementById('seatsContainer');
+    const orderBookTable = document.getElementById('orderBookTable');
+    const tradeLog = document.getElementById('tradeLog');
+
+    const orderPrice = document.getElementById('orderPrice');
+    const orderQty = document.getElementById('orderQty');
+    const btnBuy = document.getElementById('btnBuy');
+    const btnSell = document.getElementById('btnSell');
+
+    // Join Room
+    joinBtn.addEventListener('click', () => {
+      const room = roomInput.value.trim().toUpperCase();
+      const name = nameInput.value.trim();
+
+      if (!room || !name) {
+        alert('Please provide both Room Code and Player Name.');
+        return;
+      }
+
+      currentRoom = room;
+      myPlayerId = socket.id;
+
+      socket.emit('joinRoom', { roomId: room, playerName: name });
+      joinModal.classList.add('hidden');
+      roomBadge.innerText = `ROOM: ${room}`;
+      roomBadge.classList.remove('hidden');
+    });
+
+    // Post Buy/Sell Orders
+    btnBuy.addEventListener('click', () => sendOrder('BUY'));
+    btnSell.addEventListener('click', () => sendOrder('SELL'));
+
+    function sendOrder(type) {
+      if (!currentRoom) return;
+      const price = parseFloat(orderPrice.value);
+      const qty = parseInt(orderQty.value, 10);
+
+      if (isNaN(price) || isNaN(qty) || price <= 0 || qty <= 0) {
+        alert('Enter a valid positive price and quantity.');
+        return;
+      }
+
+      socket.emit('placeOrder', { roomId: currentRoom, type, price, qty });
+      orderPrice.value = '';
     }
 
-    socket.on('initPlayer', (data) => {
-      mySeat = data.seat;
-      document.getElementById('lblSeat').innerText = `Your Seat: ${mySeat}`;
-      if (data.currentRound) {
-        document.getElementById('lblRound').innerText = `Round ${data.currentRound}`;
-      }
-      document.getElementById('lobby').classList.add('hidden');
+    // Execute Trade against selected order
+    window.takeOffer = function(orderId) {
+      if (!currentRoom) return;
+      socket.emit('takeOrder', { roomId: currentRoom, orderId });
+    };
+
+    // Socket Event Listeners
+    socket.on('roomState', (data) => {
+      myPlayerId = socket.id;
+      updateHeader(data.round, data.maxRounds, data.timer);
+      renderDigits(data.digits);
+      renderSeats(data.seats, data.players);
+      renderOrderBook(data.orders);
+      renderTradeLog(data.trades);
     });
 
-    socket.on('errorMsg', (msg) => alert(msg));
-
-    socket.on('timerUpdate', (timeSec) => {
-      const m = String(Math.floor(timeSec / 60)).padStart(2, '0');
-      const s = String(timeSec % 60).padStart(2, '0');
-      document.getElementById('lblTimer').innerText = `${m}:${s}`;
+    socket.on('timerUpdate', (data) => {
+      headerTimer.innerText = `${data.timer}s`;
+      headerRound.innerText = `${data.round} / 6`;
     });
 
-    // FIXED: Listen for round advance event to update header immediately
     socket.on('roundAdvance', (data) => {
-      if (data.currentRound) {
-        document.getElementById('lblRound').innerText = `Round ${data.currentRound}`;
-      }
+      headerRound.innerText = `${data.round} / 6`;
+      renderDigits(data.digits);
     });
 
-    socket.on('stateUpdate', (state) => {
-      gameState = state;
-      updateUI();
-      drawTable();
+    socket.on('errorMsg', (msg) => {
+      alert(msg);
     });
 
-    function sendQuote() {
-      const bid = document.getElementById('inpBid').value;
-      const ask = document.getElementById('inpAsk').value;
-      if (bid && ask) {
-        socket.emit('postOffer', { bid, ask });
-      }
+    // UI Rendering Functions
+    function updateHeader(round, maxRounds, timer) {
+      headerRound.innerText = `${round} / ${maxRounds}`;
+      headerTimer.innerText = `${timer}s`;
     }
 
-    function updateUI() {
-      // FIXED: Update header Round text whenever state arrives
-      if (gameState.currentRound) {
-        document.getElementById('lblRound').innerText = `Round ${gameState.currentRound}`;
+    function renderDigits(digits) {
+      if (!digits || digits.length === 0) {
+        digitContainer.innerHTML = `<div class="text-slate-500 text-sm italic">Waiting for digits...</div>`;
+        return;
       }
 
-      if (mySeat) {
-        document.getElementById('boxPnl').innerText = `P/L: ₹${gameState.pnls[mySeat] || 0}`;
-        document.getElementById('boxPos').innerText = `Pos: ${gameState.positions[mySeat] || 0}`;
-      }
+      digitContainer.innerHTML = digits.map(d => `
+        <div class="bg-slate-900 border border-emerald-500/30 px-3 py-1.5 rounded-lg flex items-center gap-2">
+          <span class="text-xs text-slate-400">R${d.round}:</span>
+          <span class="text-lg font-bold font-mono text-emerald-400">${d.digit}</span>
+        </div>
+      `).join('');
+    }
 
-      // Trades Log
-      const logBox = document.getElementById('tradeLog');
-      logBox.innerHTML = gameState.trades.map(t => 
-        `<div class="text-gray-300">Player <b class="text-green-400">${t.buyer}</b> bought from <b class="text-red-400">${t.seller}</b> @ ₹${t.price}</div>`
-      ).reverse().join('');
+    function renderSeats(seats, players) {
+      const seatKeys = ['A', 'B', 'C', 'D', 'E', 'F'];
+      seatsContainer.innerHTML = seatKeys.map(seat => {
+        const socketId = seats[seat];
+        const player = socketId ? players[socketId] : null;
+        const isMe = socketId === myPlayerId;
 
-      // Leaderboard
-      const lbBox = document.getElementById('leaderboard');
-      const sorted = Object.keys(gameState.pnls).sort((a,b) => gameState.pnls[b] - gameState.pnls[a]);
-      lbBox.innerHTML = sorted.map((seat, i) => {
-        const name = gameState.seats[seat]?.name || 'Empty';
-        return `<div class="flex justify-between"><span>#${i+1} ${seat} (${name})</span><span class="font-bold text-yellow-400">₹${gameState.pnls[seat]}</span></div>`;
+        if (player) {
+          return `
+            <div class="bg-slate-900/80 border ${isMe ? 'border-emerald-500/80 bg-emerald-950/10' : 'border-slate-800'} p-3 rounded-xl flex justify-between items-center">
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">${seat}</span>
+                  <span class="text-sm font-semibold ${isMe ? 'text-emerald-400' : 'text-slate-200'}">${player.name} ${isMe ? '(You)' : ''}</span>
+                </div>
+                <div class="text-xs font-mono text-slate-400 mt-1">Pos: ${player.position}</div>
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="bg-slate-900/30 border border-slate-800/40 p-3 rounded-xl flex justify-between items-center opacity-60">
+            <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-slate-800/50 text-slate-500 font-bold">${seat}</span>
+            <span class="text-xs text-slate-500 italic">Empty Seat</span>
+          </div>
+        `;
       }).join('');
     }
 
-    // Canvas Rendering Engine
-    function drawTable() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2 - 10;
-
-      // Table Oval
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, 260, 140, 0, 0, 2 * Math.PI);
-      ctx.fillStyle = '#3d0a28'; ctx.fill();
-      ctx.lineWidth = 4; ctx.strokeStyle = '#8e1948'; ctx.stroke();
-
-      // Serial Cards
-      const cardStartX = cx - 120;
-      for (let i = 0; i < 6; i++) {
-        const x = cardStartX + (i * 40);
-        const val = gameState.revealedDigits[i] !== undefined ? gameState.revealedDigits[i] : '';
-        ctx.fillStyle = val !== '' ? '#ffffff' : '#2b051b';
-        ctx.fillRect(x, cy - 25, 35, 50);
-        ctx.lineWidth = 2; ctx.strokeStyle = '#772048'; ctx.strokeRect(x, cy - 25, 35, 50);
-
-        if (val !== '') {
-          ctx.fillStyle = '#000000'; ctx.font = 'bold 20px sans-serif';
-          ctx.fillText(val, x + 12, cy + 8);
-        }
+    function renderOrderBook(orders) {
+      if (!orders || orders.length === 0) {
+        orderBookTable.innerHTML = `
+          <tr>
+            <td colspan="5" class="py-8 text-center text-slate-500">No active offers. Post a Buy/Sell order to start.</td>
+          </tr>`;
+        return;
       }
 
-      // Seat Coordinates
-      const seats = {
-        A: { x: cx, y: cy + 160, ox: 0, oy: 30 },
-        F: { x: cx - 230, y: cy + 60, ox: -10, oy: 30 },
-        E: { x: cx - 180, y: cy - 110, ox: -10, oy: 30 },
-        D: { x: cx, y: cy - 130, ox: 0, oy: -35 },
-        C: { x: cx + 180, y: cy - 110, ox: 10, oy: 30 },
-        B: { x: cx + 230, y: cy + 60, ox: 10, oy: 30 }
-      };
+      orderBookTable.innerHTML = orders.map(o => {
+        const isMyOrder = o.playerId === myPlayerId;
+        const isBuy = o.type === 'BUY';
 
-      // Click Regions for Badge Clicks
-      canvas.onclick = (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
+        return `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="py-2.5 font-semibold text-slate-300">${o.playerName} <span class="text-xs text-slate-500">(${o.seat})</span></td>
+            <td class="py-2.5">
+              <span class="px-2 py-0.5 rounded text-xs font-bold ${isBuy ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'}">
+                ${o.type}
+              </span>
+            </td>
+            <td class="py-2.5 font-bold text-slate-100">₹${o.price}</td>
+            <td class="py-2.5 text-slate-300">${o.qty}</td>
+            <td class="py-2.5 text-right">
+              ${isMyOrder ? 
+                `<span class="text-xs text-slate-500 italic">Your Order</span>` : 
+                `<button onclick="takeOffer('${o.id}')" class="px-3 py-1 rounded text-xs font-bold ${isBuy ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'} transition">
+                  ${isBuy ? 'SELL to ' + o.price : 'BUY at ' + o.price}
+                 </button>`
+              }
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
 
-        Object.keys(seats).forEach(seat => {
-          if (seat === mySeat) return;
-          const offer = gameState.offers[seat];
-          if (!offer) return;
-          const pos = seats[seat];
-          const bx = pos.x + pos.ox;
-          const by = pos.y + pos.oy;
+    function renderTradeLog(trades) {
+      if (!trades || trades.length === 0) {
+        tradeLog.innerHTML = `<div class="text-slate-500 italic">No trades executed yet...</div>`;
+        return;
+      }
 
-          // Buy Badge Bounds
-          if (mx >= bx - 35 && mx <= bx + 35 && my >= by - 12 && my <= by + 2) {
-            socket.emit('executeDirectTrade', { targetSeat: seat, action: 'Buy', price: offer.ask });
-          }
-          // Sell Badge Bounds
-          if (mx >= bx - 35 && mx <= bx + 35 && my >= by + 4 && my <= by + 18) {
-            socket.emit('executeDirectTrade', { targetSeat: seat, action: 'Sell', price: offer.bid });
-          }
-        });
-      };
-
-      // Render Seats and Live Offer Badges
-      Object.keys(seats).forEach(seat => {
-        const pos = seats[seat];
-        const isMe = seat === mySeat;
-        const pData = gameState.seats[seat];
-
-        // Seat Node
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 20, 0, 2 * Math.PI);
-        ctx.fillStyle = isMe ? '#00c853' : (pData ? '#00b0ff' : '#444444');
-        ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke();
-
-        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px sans-serif';
-        ctx.fillText(seat, pos.x - 4, pos.y + 4);
-
-        // Render Green (Buy Ask) and Red (Sell Bid) Badges
-        const offer = gameState.offers[seat];
-        if (offer) {
-          const bx = pos.x + pos.ox;
-          const by = pos.y + pos.oy;
-
-          // Buy Badge
-          ctx.fillStyle = '#152b18'; ctx.fillRect(bx - 35, by - 12, 70, 14);
-          ctx.lineWidth = 1; ctx.strokeStyle = '#00e676'; ctx.strokeRect(bx - 35, by - 12, 70, 14);
-          ctx.fillStyle = '#00e676'; ctx.font = 'bold 9px sans-serif';
-          ctx.fillText(`Buy @ ${offer.ask}`, bx - 28, by - 2);
-
-          // Sell Badge
-          ctx.fillStyle = '#331013'; ctx.fillRect(bx - 35, by + 4, 70, 14);
-          ctx.strokeStyle = '#ff1744'; ctx.strokeRect(bx - 35, by + 4, 70, 14);
-          ctx.fillStyle = '#ff1744'; ctx.font = 'bold 9px sans-serif';
-          ctx.fillText(`Sell @ ${offer.bid}`, bx - 28, by + 14);
-        }
-      });
+      tradeLog.innerHTML = trades.map(t => `
+        <div class="flex justify-between items-center bg-slate-900/60 p-2 rounded border border-slate-800/60">
+          <div>
+            <span class="text-emerald-400 font-bold">${t.buyer}</span> bought from <span class="text-rose-400 font-bold">${t.seller}</span>
+          </div>
+          <div class="text-slate-400">
+            ${t.qty} @ <span class="text-white font-bold">₹${t.price}</span> <span class="text-slate-600 text-[10px] ml-1">${t.time}</span>
+          </div>
+        </div>
+      `).join('');
     }
   </script>
 </body>
